@@ -1,13 +1,40 @@
-// 11.0592MHz ×¨ÓÃ ¾«È·ºÁÃëÑÓÊ±
+/**
+ * MIT License
+ *
+ * Copyright (c) 2026 xiaoshijourney
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+#include "Delay.h"
+
+/**
+ * @brief  æ¯«ç§’çº§å»¶æ—¶ï¼ˆ@11.0592MHz ç²¾ç¡®æ ¡å‡†ï¼‰
+ * @param  xms  å»¶æ—¶æ¯«ç§’æ•°
+ */
 void Delay(unsigned int xms)
 {
     unsigned char data i, j;
-    while(xms--)
-    {
+    while (xms--) {
         i = 2;
-        j = 152;   // Ö»¸ÄÕâÀï 239 ¡ú 152
-        do
-        {
+        j = 152;
+        do {
             while (--j);
         } while (--i);
     }

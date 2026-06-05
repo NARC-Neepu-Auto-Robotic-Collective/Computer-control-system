@@ -1,370 +1,412 @@
-/*******************************************************************************  
-ÎÄ¼şÃû³Æ£º main.c 
-×÷ Õß£º    zw sangel
-°æ ±¾£º    V1.00
-Ëµ Ã÷£º    LCD1602IO¿ØÖÆ·½Ê½ 
-ĞŞ¸Ä¼ÇÂ¼£º  
-*******************************************************************************/
-/*******************************************************************************    
-* ¹¦ÄÜÃèÊö:                                                              	  *
-*          ³ÌĞòÔËĞĞºóÏÔÊ¾                                                 	  *
-*          µÚÒ»ĞĞ£ºWINDWAY                                   			      *
-*          µÚ¶şĞĞ£ºA GOOD NEWS			                                      *
+/**
+ * MIT License
+ *
+ * Copyright (c) 2026 xiaoshijourney
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 
-*½ÓÏßËµÃ÷£ºP00~P07-DB0~DB7£¬P20-RS£¬P21-RW£¬P22-EN
-*******************************************************************************/
+/******************************************************************************
+ * é¢˜ç›®2ï¼šæœºæŸœæ¸©åº¦æ§åˆ¶ç³»ç»Ÿ
+ * åŠŸèƒ½ï¼šDS18B20 é‡‡é›†æ¸©åº¦ â†’ LCD1602 æ˜¾ç¤º â†’ æŒ‰é”®è®¾å®šç›®æ ‡æ¸©åº¦ â†’ PID æ§åˆ¶æ­¥è¿›ç”µæœºï¼ˆé£æ‰‡ï¼‰
+ * å®éªŒç®±èµ„æºï¼šæ¸©åº¦ä¼ æ„Ÿæ¨¡å—ã€æ­¥è¿›ç”µæœºã€LCD1602ã€çŸ©é˜µæŒ‰é”®
+ * MCU: AT89S52, XTAL: 11.0592MHz
+ ******************************************************************************/
+
 #include <reg52.h>
 #include <intrins.h>
 #include <math.h>
+
+/* ==================== ç±»å‹å®šä¹‰ ==================== */
 #define uchar unsigned char
-#define uint unsigned int
-#define out P0
-#define out_fan  P2
-/***********¶Ë¿Ú¶¨Òå**********************************************************/
-sbit rs=P3^4;
-sbit rw=P3^5;
-sbit e=P3^6;
+#define uint  unsigned int
 
-sbit DQ=P1^4;
+/* ==================== ç¡¬ä»¶æ¥å£å®šä¹‰ ==================== */
+#define LCD_DATA    P0          /* LCD1602 æ•°æ®å£ (P0.0~P0.7) */
+#define FAN_PORT    P2          /* æ­¥è¿›ç”µæœºé©±åŠ¨å£ (P2.0~P2.3) */
 
-sbit add=P1^0;
-sbit sub=P1^1;
-sbit add1=P1^2;
-sbit sub1=P1^3;
-uchar code turn[]={0x02,0x06,0x04,0x0c,0x08,0x09,0x01,0x03};	//²½½øµç»úÕı×ªÏàĞò±í
-/***********º¯ÊıÉêÃ÷**********************************************************/
-void check_busy(void);
-void write_command(uchar com);
-void write_data(uchar dat);
-void LCD_initial(void);
-void string(uchar ad ,uchar *s);
-void lcd_test(void);
-void delay(uint);
+sbit LCD_RS  = P3^4;            /* LCD1602 å¯„å­˜å™¨é€‰æ‹© */
+sbit LCD_RW  = P3^5;            /* LCD1602 è¯»/å†™é€‰æ‹© */
+sbit LCD_EN  = P3^6;            /* LCD1602 ä½¿èƒ½ */
 
-void delay5(uchar);
-void init_ds18b20(void);
-uchar readbyte(void);
-void writebyte(uchar);
+sbit DQ      = P1^4;            /* DS18B20 å•æ€»çº¿ */
 
-void PID_Control(uint current_temp);
-uint retemp(void);
-uint count = 0;			//¶¨Ê±Æ÷ÖĞ¶Ï¼ÆÊıÆ÷
-int   temp, pre_temp = 0;	//µ±Ç°ÎÂ¶ÈÖµ¡¢ÉÏÒ»´ÎÎÂ¶ÈÖµ£¨³õÊ¼»¯£©
-uint   pre_target_temp = 0;	//ÉÏÒ»´ÎÄ¿±êÎÂ¶ÈÖµ£¨ÓÃÓÚ¼ì²âÄ¿±êÎÂ¶È±ä»¯£©
-uchar dispbuf[4];			//ÏÔÊ¾»º³åÇø£¬´æ´¢ÎÂ¶ÈµÄ4Î»Êı×Ö
-uchar i = 0;				//²½½øµç»úÏàĞòË÷Òı£¨³õÊ¼»¯£©
-uint speed_threshold = 0;
-//PID¿ØÖÆÏà¹Ø±äÁ¿
-int target_temp = 250;		//Ä¿±êÎÂ¶È£¨25.0¡ãC£¬·Å´ó10±¶£©
-int error;					//µ±Ç°Îó²î
-int last_error;				//ÉÏÒ»´ÎÎó²î
-int integral;				//Îó²î»ı·Ö
-int derivative;				//Îó²îÎ¢·Ö
-int pid_output;				//PIDÊä³öÖµ
+sbit KEY_ADD  = P1^0;           /* ç›®æ ‡æ¸©åº¦ç²—è°ƒ+ï¼ˆ+1Â°Cï¼‰ */
+sbit KEY_SUB  = P1^1;           /* ç›®æ ‡æ¸©åº¦ç²—è°ƒ-ï¼ˆ-1Â°Cï¼‰ */
+sbit KEY_ADD1 = P1^2;           /* ç›®æ ‡æ¸©åº¦ç»†è°ƒ+ï¼ˆ+0.1Â°Cï¼‰ */
+sbit KEY_SUB1 = P1^3;           /* ç›®æ ‡æ¸©åº¦ç»†è°ƒ-ï¼ˆ-0.1Â°Cï¼‰ */
 
-//PID²ÎÊı£¨¸ù¾İÊµ¼ÊÏµÍ³µ÷Õû£©
-#define KP 20				//±ÈÀıÏµÊı
-#define KI 1				//»ı·ÖÏµÊı
-#define KD 3				//Î¢·ÖÏµÊı
+/* ==================== PID æ§åˆ¶å‚æ•° ==================== */
+#define KP  20                  /* æ¯”ä¾‹ç³»æ•° */
+#define KI  1                   /* ç§¯åˆ†ç³»æ•° */
+#define KD  3                   /* å¾®åˆ†ç³»æ•° */
 
-//²½½øµç»ú×ªËÙ¿ØÖÆ
-uint fan_speed = 0;			//·çÉÈ×ªËÙ£¨0-100£©
-uint speed_counter = 0;		//×ªËÙ¿ØÖÆ¼ÆÊıÆ÷
+/* ==================== æ­¥è¿›ç”µæœº 8 æ‹é©±åŠ¨è¡¨ ==================== */
+uchar code STEP_TABLE[] = {
+    0x02, 0x06, 0x04, 0x0C, 0x08, 0x09, 0x01, 0x03
+};
+
+/* ==================== å…¨å±€å˜é‡ ==================== */
+int    target_temp = 250;       /* ç›®æ ‡æ¸©åº¦ï¼ˆ25.0Â°Cï¼Œæ”¾å¤§10å€ï¼‰ */
+int    error;                   /* å½“å‰è¯¯å·® */
+int    last_error;              /* ä¸Šä¸€æ¬¡è¯¯å·® */
+int    integral;                /* ç§¯åˆ†ç´¯åŠ  */
+int    derivative;              /* å¾®åˆ† */
+int    pid_output;              /* PID è¾“å‡ºå€¼ */
+uint   fan_speed  = 0;          /* é£æ‰‡è½¬é€Ÿ (0~100) */
+uint   speed_counter = 0;       /* è½¬é€Ÿæ§åˆ¶è®¡æ•°å™¨ */
+uint   speed_threshold = 0;     /* è½¬é€Ÿé˜ˆå€¼ */
+uchar  step_idx = 0;            /* æ­¥è¿›ç”µæœºå½“å‰æ‹å· */
+
+/* ==================== å‡½æ•°å‰ç½®å£°æ˜ ==================== */
+void  Delay(uint ms);
+void  Delay5us(uchar n);
+void  LCD_CheckBusy(void);
+void  LCD_WriteCommand(uchar cmd);
+void  LCD_WriteData(uchar dat);
+void  LCD_Init(void);
+void  LCD_ShowString(uchar addr, uchar *str);
+void  Timer0_Init(void);
+void  PID_Control(uint current_temp);
+void  DS18B20_Init(void);
+void  DS18B20_WriteByte(uchar dat);
+uchar DS18B20_ReadByte(void);
+uint  DS18B20_ReadTemp(void);
+
+/* ==================== å»¶æ—¶å‡½æ•° ==================== */
+
+/**
+ * @brief  æ¯«ç§’çº§å»¶æ—¶ï¼ˆçº¦1ms/æ¬¡ï¼Œ@11.0592MHzï¼‰
+ * @param  ms  å»¶æ—¶æ¯«ç§’æ•°
+ */
+void Delay(uint ms)
+{
+    uchar i;
+    while (ms--) {
+        i = 250;
+        while (--i);
+        i = 249;
+        while (--i);
+    }
+}
+
+/**
+ * @brief  å¾®ç§’çº§çŸ­å»¶æ—¶ï¼ˆçº¦5us/æ¬¡ï¼Œ@11.0592MHzï¼‰
+ */
+void Delay5us(uchar n)
+{
+    while (n--) {
+        _nop_();
+        _nop_();
+        _nop_();
+    }
+}
+
+/* ==================== LCD1602 é©±åŠ¨ ==================== */
+
+/**
+ * @brief  æ£€æµ‹ LCD1602 å¿™çŠ¶æ€
+ */
+void LCD_CheckBusy(void)
+{
+    uchar status;
+    do {
+        status = 0xFF;
+        LCD_EN = 0;
+        LCD_RS = 0;             /* æŒ‡ä»¤å¯„å­˜å™¨ */
+        LCD_RW = 1;             /* è¯»æ¨¡å¼ */
+        LCD_EN = 1;
+        status = LCD_DATA;      /* è¯»å–çŠ¶æ€å­— */
+    } while (status & 0x80);   /* D7=1 è¡¨ç¤ºå¿™ */
+    LCD_EN = 0;
+}
+
+/**
+ * @brief  å‘ LCD1602 å†™å…¥æŒ‡ä»¤
+ */
+void LCD_WriteCommand(uchar cmd)
+{
+    LCD_CheckBusy();
+    LCD_EN = 0;
+    LCD_RS = 0;                 /* æŒ‡ä»¤å¯„å­˜å™¨ */
+    LCD_RW = 0;                 /* å†™æ¨¡å¼ */
+    LCD_DATA = cmd;
+    LCD_EN = 1;
+    _nop_();
+    LCD_EN = 0;
+    Delay(1);
+}
+
+/**
+ * @brief  å‘ LCD1602 å†™å…¥æ•°æ®
+ */
+void LCD_WriteData(uchar dat)
+{
+    LCD_CheckBusy();
+    LCD_EN = 0;
+    LCD_RS = 1;                 /* æ•°æ®å¯„å­˜å™¨ */
+    LCD_RW = 0;                 /* å†™æ¨¡å¼ */
+    LCD_DATA = dat;
+    LCD_EN = 1;
+    _nop_();
+    LCD_EN = 0;
+    Delay(1);
+}
+
+/**
+ * @brief  åˆå§‹åŒ– LCD1602ï¼ˆ8ä½æ€»çº¿ã€åŒè¡Œæ˜¾ç¤ºã€5Ã—7ç‚¹é˜µï¼‰
+ */
+void LCD_Init(void)
+{
+    LCD_WriteCommand(0x38);     /* 8ä½æ€»çº¿ï¼ŒåŒè¡Œæ˜¾ç¤ºï¼Œ5Ã—7ç‚¹é˜µ */
+    LCD_WriteCommand(0x0C);     /* æ˜¾ç¤ºå¼€ï¼Œå…‰æ ‡å…³ï¼Œä¸é—ªçƒ */
+    LCD_WriteCommand(0x06);     /* å†™å…¥åå…‰æ ‡å³ç§»ï¼Œå±å¹•ä¸æ»šåŠ¨ */
+    LCD_WriteCommand(0x01);     /* æ¸…å± */
+    Delay(1);
+}
+
+/**
+ * @brief  åœ¨ LCD1602 æŒ‡å®šåœ°å€å¼€å§‹æ˜¾ç¤ºå­—ç¬¦ä¸²
+ * @param  addr  DDRAM åœ°å€ï¼ˆ0x80+åˆ— ä¸ºç¬¬ä¸€è¡Œï¼Œ0xC0+åˆ— ä¸ºç¬¬äºŒè¡Œï¼‰
+ * @param  str   è¦æ˜¾ç¤ºçš„å­—ç¬¦ä¸²ï¼ˆä»¥'\0'ç»“å°¾ï¼‰
+ */
+void LCD_ShowString(uchar addr, uchar *str)
+{
+    LCD_WriteCommand(addr);
+    while (*str) {
+        LCD_WriteData(*str++);
+        Delay(1);
+    }
+}
+
+/* ==================== DS18B20 é©±åŠ¨ ==================== */
+
+/**
+ * @brief  DS18B20 åˆå§‹åŒ–ï¼ˆä¸»æœºå‘é€å¤ä½è„‰å†²ï¼Œç­‰å¾…ä»æœºåº”ç­”ï¼‰
+ */
+void DS18B20_Init(void)
+{
+    DQ = 0;                     /* æ‹‰ä½æ€»çº¿ */
+    Delay5us(120);              /* ä¿æŒ 480~960us */
+    DQ = 1;                     /* é‡Šæ”¾æ€»çº¿ */
+    Delay5us(16);               /* ç­‰å¾… 15~60us */
+    Delay5us(80);               /* ç­‰å¾…ä»æœºåº”ç­”å®Œæˆ */
+}
+
+/**
+ * @brief  å‘ DS18B20 å†™å…¥ 1 å­—èŠ‚
+ */
+void DS18B20_WriteByte(uchar dat)
+{
+    uchar i;
+    for (i = 8; i > 0; i--) {
+        DQ = 0;
+        DQ = dat & 0x01;        /* å†™"1"ï¼šæ‹‰ä½15usåé‡Šæ”¾ï¼›å†™"0"ï¼šæ‹‰ä½60us */
+        Delay5us(12);
+        DQ = 1;
+        dat >>= 1;
+        Delay5us(5);
+    }
+}
+
+/**
+ * @brief  ä» DS18B20 è¯»å– 1 å­—èŠ‚
+ */
+uchar DS18B20_ReadByte(void)
+{
+    uchar i, dat = 0;
+    for (i = 8; i > 0; i--) {
+        DQ = 0;
+        Delay5us(1);
+        DQ = 1;                 /* é‡Šæ”¾æ€»çº¿ï¼Œç­‰å¾…ä»æœºè¾“å‡ºæ•°æ® */
+        dat >>= 1;
+        if (DQ) dat |= 0x80;
+        Delay5us(11);
+    }
+    return dat;
+}
+
+/**
+ * @brief  è¯»å– DS18B20 æ¸©åº¦å€¼ï¼ˆè¿”å›å€¼ = å®é™…æ¸©åº¦ Ã— 10ï¼‰
+ */
+uint DS18B20_ReadTemp(void)
+{
+    uint  raw, temp;
+    uchar low_byte, high_byte;
+
+    DS18B20_Init();
+    DS18B20_WriteByte(0xCC);    /* è·³è¿‡ ROM åŒ¹é… */
+    DS18B20_WriteByte(0x44);    /* å¯åŠ¨æ¸©åº¦è½¬æ¢ */
+
+    DS18B20_Init();
+    DS18B20_WriteByte(0xCC);    /* è·³è¿‡ ROM åŒ¹é… */
+    DS18B20_WriteByte(0xBE);    /* è¯»æš‚å­˜å™¨ */
+
+    low_byte  = DS18B20_ReadByte();
+    high_byte = DS18B20_ReadByte();
+
+    raw = high_byte;
+    raw <<= 8;
+    raw |= low_byte;
+    temp = raw * 0.625;         /* åˆ†è¾¨ç‡ 0.0625Â°Cï¼Œæ”¾å¤§10å€ */
+
+    return temp;
+}
+
+/* ==================== å®šæ—¶å™¨0ï¼ˆæ­¥è¿›ç”µæœº PWM è°ƒé€Ÿï¼‰ ==================== */
+
+/**
+ * @brief  å®šæ—¶å™¨0åˆå§‹åŒ–ï¼ˆæ¨¡å¼1ï¼Œ16ä½ï¼Œçº¦1msä¸­æ–­ï¼‰
+ */
 void Timer0_Init(void)
 {
-	TMOD |= 0x01;	//ÉèÖÃ¶¨Ê±Æ÷0ÎªÄ£Ê½1£¨16Î»¶¨Ê±Æ÷£©
-	TH0 = 0xF8;		//¶¨Ê±Æ÷³õÖµ£¬¶¨Ê±Ô¼1ms
-	TL0 = 0xCD;
-	ET0 = 1;		//Ê¹ÄÜ¶¨Ê±Æ÷0ÖĞ¶Ï
-	EA = 1;			//¿ª×ÜÖĞ¶Ï
-	TR0 = 1;		//Æô¶¯¶¨Ê±Æ÷0
+    TMOD |= 0x01;               /* å®šæ—¶å™¨0ï¼Œæ¨¡å¼1 */
+    TH0   = 0xF8;               /* åˆå€¼ï¼Œå®šæ—¶çº¦1ms */
+    TL0   = 0xCD;
+    ET0   = 1;                  /* å…è®¸å®šæ—¶å™¨0ä¸­æ–­ */
+    EA    = 1;                  /* å¼€æ€»ä¸­æ–­ */
+    TR0   = 1;                  /* å¯åŠ¨å®šæ—¶å™¨0 */
 }
+
+/**
+ * @brief  å®šæ—¶å™¨0ä¸­æ–­æœåŠ¡å‡½æ•°ï¼ˆæ­¥è¿›ç”µæœºé€Ÿåº¦æ§åˆ¶ï¼‰
+ */
 void Timer0_ISR(void) interrupt 1
 {
-	TH0 = 0xF8;		//¶¨Ê±Æ÷³õÖµ£¬¶¨Ê±Ô¼1ms
-	TL0 = 0xCD;
+    TH0 = 0xF8;
+    TL0 = 0xCD;
 
-	if(fan_speed > 0)	//Èç¹û·çÉÈ×ªËÙ´óÓÚ0
-	{
-		speed_counter++;
-		
-		//¸ù¾İ×ªËÙ¼ÆËã²½½øµç»úÇĞ»»ÆµÂÊ
-		//fan_speedÔ½´ó£¬ÇĞ»»Ô½¿ì£»fan_speedÔ½Ğ¡£¬ÇĞ»»Ô½Âı
-		speed_threshold = 100 / fan_speed + 1;
-		
-		if(speed_counter >= speed_threshold)
-		{
-			speed_counter = 0;
-			i = i < 8 ? i+1 : 0;	//Ñ­»·ÇĞ»»²½½øµç»úÏàĞò
-			out_fan = turn[i];	//Êä³öµ½²½½øµç»ú¿ØÖÆ·çÉÈ×ªËÙ
-		}
-	}
-	else
-	{
-		//×ªËÙÎª0£¬Í£Ö¹²½½øµç»ú
-		out_fan = 0x00;
-		speed_counter = 0;
-	}
-}
-/***********Ö÷³ÌĞò*************************************************************/
-void main(void)
-{
-	out_fan=0x03;					//³õÊ¼»¯·çÉÈ¿ØÖÆ¶Ë¿Ú
+    if (fan_speed > 0) {
+        speed_counter++;
+        speed_threshold = 100 / fan_speed + 1;
 
-	LCD_initial();					//LCD1602³õÊ¼»¯
-	Timer0_Init();					//¶¨Ê±Æ÷0³õÊ¼»¯
-	
-	//ÏÔÊ¾Ä¿±êÎÂ¶È
-	dispbuf[3] = target_temp%10 + '0';			//Ä¿±êÎÂ¶ÈĞ¡ÊıÎ»
-	dispbuf[1] = target_temp/10%10 + '0';		//Ä¿±êÎÂ¶È¸öÎ»
-	dispbuf[0] = target_temp/100%10 + '0';		//Ä¿±êÎÂ¶ÈÊ®Î»
-	dispbuf[2] = '.';							//Ğ¡Êıµã
-	string(0xC0,"Set:");						//µÚ¶şĞĞÏÔÊ¾"Set:"
-	string(0xC4,dispbuf);						//ÏÔÊ¾Ä¿±êÎÂ¶È
-
-
-
-	while(1)						//Ö÷Ñ­»·
-	{
-		if(!add1)		
-		{
-			target_temp++;
-			delay(5);
-		}
-		else if(!sub1)
-		{
-			target_temp--;
-			delay(5);
-		}
-		else if(!add)		
-		{
-			target_temp += 10;
-			delay(5);
-		}
-		else if(!sub)
-		{
-			target_temp -= 10;
-			delay(5);
-		}
-
-		temp=retemp();				//¶ÁÈ¡µ±Ç°ÎÂ¶È
-		//temp=255;
-		PID_Control(temp);			//Ö´ĞĞPID¿ØÖÆ
-			dispbuf[3] = fan_speed%10 + '0';			//Ä¿±êÎÂ¶ÈĞ¡ÊıÎ»
-			dispbuf[1] = fan_speed/10%10 + '0';		//Ä¿±êÎÂ¶È¸öÎ»
-			dispbuf[0] = fan_speed/100%10 + '0';		//Ä¿±êÎÂ¶ÈÊ®Î»
-			dispbuf[2] = '.';							//Ğ¡Êıµã
-			string(0xC9,dispbuf);						//ÏÔÊ¾Ä¿±êÎÂ¶È		 
-		if(temp != pre_temp)		//µ±Ç°ÎÂ¶È±ä»¯Ê±Ë¢ĞÂÏÔÊ¾
-		{
-			pre_temp = temp;		//¸üĞÂÉÏÒ»´ÎÎÂ¶ÈÖµ
-			dispbuf[3] = temp%10 + '0';			//ÎÂ¶ÈĞ¡ÊıÎ»
-			dispbuf[1] = temp/10%10 + '0';		//ÎÂ¶È¸öÎ»
-			dispbuf[0] = temp/100%10 + '0';		//ÎÂ¶ÈÊ®Î»
-			dispbuf[2] = '.';					//Ğ¡Êıµã
-			string(0x80,"Cur:");				//µÚÒ»ĞĞÏÔÊ¾"Cur:"
-			string(0x84,dispbuf);				//ÏÔÊ¾µ±Ç°ÎÂ¶È
-		}
-		
-		if(target_temp != pre_target_temp)	//Ä¿±êÎÂ¶È±ä»¯Ê±Ë¢ĞÂÏÔÊ¾
-		{
-			pre_target_temp = target_temp;	//¸üĞÂÉÏÒ»´ÎÄ¿±êÎÂ¶ÈÖµ
-			dispbuf[3] = target_temp%10 + '0';			//Ä¿±êÎÂ¶ÈĞ¡ÊıÎ»
-			dispbuf[1] = target_temp/10%10 + '0';		//Ä¿±êÎÂ¶È¸öÎ»
-			dispbuf[0] = target_temp/100%10 + '0';		//Ä¿±êÎÂ¶ÈÊ®Î»
-			dispbuf[2] = '.';							//Ğ¡Êıµã
-			string(0xC0,"Set:");						//µÚ¶şĞĞÏÔÊ¾"Set:"
-			string(0xC4,dispbuf);						//ÏÔÊ¾Ä¿±êÎÂ¶È
-		}
-
-
-
-		delay(5); 
-	}
-}  
-
-//1msÑÓÊ±³ÌĞò£¨Ô¼1ms/´Î£©
-void delay(uint j)
-{
-	uchar i=250;
-	for(;j>0;j--)
-	{
-		while(--i);
-		i=249;
-		while(--i);
-		i=250;
-	}
+        if (speed_counter >= speed_threshold) {
+            speed_counter = 0;
+            step_idx = (step_idx < 7) ? (step_idx + 1) : 0;
+            FAN_PORT = STEP_TABLE[step_idx];
+        }
+    } else {
+        /* è½¬é€Ÿä¸º0ï¼Œåœæ­¢æ­¥è¿›ç”µæœº */
+        FAN_PORT = 0x00;
+        speed_counter = 0;
+    }
 }
 
-//5usÑÓÊ±³ÌĞò£¨Ô¼5us/´Î£©
-void delay5(uchar n)
-{
-	do
-	{
-		_nop_();
-		_nop_();
-		_nop_();
-		n--;
-	}
-	while(n);
-}
-//²éÃ¦³ÌĞò£º¼ì²âLCD1602ÊÇ·ñ´¦ÓÚÃ¦×´Ì¬
-void check_busy(void)
-{
-	uchar dt;
-	do
-	{
-		dt=0xff;
-		e=0;
-		rs=0;	//Ö¸Áî¼Ä´æÆ÷
-		rw=1;	//¶ÁÄ£Ê½
-		e=1;	//Ê¹ÄÜ
-		dt=out;	//¶ÁÈ¡×´Ì¬×Ö
-	}while(dt&0x80);	//D7=1±íÊ¾Ã¦
-	e=0;	//¹Ø±ÕÊ¹ÄÜ
-}
-//Ğ´¿ØÖÆÖ¸Áî£ºÏòLCD1602Ğ´ÈëÃüÁî
-void write_command(uchar com)
-{
-	check_busy();	//ÏÈ¼ì²âÃ¦×´Ì¬
-	e=0;
-	rs=0;			//Ö¸Áî¼Ä´æÆ÷
-	rw=0;			//Ğ´Ä£Ê½
-	out=com;		//Êä³öÃüÁî
-	e=1;			//Ê¹ÄÜ
-	_nop_();
-	e=0;			//¹Ø±ÕÊ¹ÄÜ
-	delay(1);		//ÑÓÊ±
-}
+/* ==================== PID æ§åˆ¶ç®—æ³• ==================== */
 
-//Ğ´Êı¾İÖ¸Áî£ºÏòLCD1602Ğ´ÈëÏÔÊ¾Êı¾İ
-void write_data(uchar dat)
-{
-	check_busy();	//ÏÈ¼ì²âÃ¦×´Ì¬
-	e=0;
-	rs=1;			//Êı¾İ¼Ä´æÆ÷
-	rw=0;			//Ğ´Ä£Ê½
-	out=dat;		//Êä³öÊı¾İ
-	e=1;			//Ê¹ÄÜ
-	_nop_();
-	e=0;			//¹Ø±ÕÊ¹ÄÜ
-	delay(1);		//ÑÓÊ±	
-}
-//Òº¾§ÆÁ³õÊ¼»¯£º³õÊ¼»¯LCD1602ÏÔÊ¾²ÎÊı
-void LCD_initial(void)
-{
-	write_command(0x38);	//8Î»×ÜÏß£¬Ë«ĞĞÏÔÊ¾£¬5x7µãÕó×Ö·û
-	write_command(0x0C);	//¿ªÏÔÊ¾£¬¹â±ê¹Ø£¬ÎŞÉÁË¸
-	write_command(0x06);	//¹â±êÓÒÒÆ£¬×Ö·û²»¶¯
-	write_command(0x01);	//ÇåÆÁ
-	delay(1);
-}
-
-//Êä³ö×Ö·û´®£º´ÓÖ¸¶¨µØÖ·¿ªÊ¼ÏÔÊ¾×Ö·û´®
-void string(uchar ad, uchar *s)
-{
-	write_command(ad);	//ÉèÖÃÏÔÊ¾µØÖ·
-	while(*s>0)			//Ñ­»·Êä³öÃ¿¸ö×Ö·û
-	{
-		write_data(*s++);
-		delay(100);
-	}
-}
-//´ÓDS18B20¶ÁÈ¡Ò»×Ö½ÚÊı¾İ
-uchar readbyte(void)
-{
-	uchar i=0;
-	uchar date=0;
-	for (i=8;i>0;i--)	//Ñ­»·¶ÁÈ¡8Î»
-	{
-		DQ =0;
-		delay5(1);
-		DQ =1;	//ÊÍ·Å×ÜÏß£¬µÈ´ı15usºó¶ÁÈ¡Êı¾İ
-		date>>=1;			//ÓÒÒÆÒ»Î»
-		if(DQ)				//¶ÁÈ¡Êı¾İÏß×´Ì¬
-			date|=0x80;		//Èç¹ûÎª¸ßµçÆ½£¬ÉèÖÃ×î¸ßÎ»
-		delay5(11);			//µÈ´ıÊ£ÓàÊ±¼ä
-	}
-	return(date);
-}
-/*--------------DS18B20³õÊ¼»¯--------------------*/
-void init_ds18b20(void)
-{
-	 uchar x=0; 
-	 DQ =0;    	//À­µÍ×ÜÏß£¬·¢³ö¸´Î»ĞÅºÅ
-	 delay5(120); 	//±£³ÖµÍµçÆ½480-960us
-	 DQ =1;    	//ÊÍ·Å×ÜÏß
-	 delay5(16);	//µÈ´ı15-60us£¬DS18B20»á·¢³ö´æÔÚÂö³å
-	 delay5(80);	//µÈ´ıDS18B20ÏìÓ¦
-}
-/*--------------ÏòDS18B20Ğ´Ò»×Ö½Ú------------------*/
-void writebyte(uchar dat)
-{
- uchar i=0;
- for(i=8;i>0;i--)
-	 {
-	  DQ =0;
-	  DQ =dat&0x01;//Ğ´"1"Ê±±£³Ö15usÒÔÉÏ
-	  delay5(12);	   //Ğ´"0"Ê±±£³Ö60usÒÔÉÏ
-	  DQ = 1;	   
-	  dat>>=1;
-	  delay5(5);
-	  }
-}
-/*--------------¶ÁÈ¡ÎÂ¶ÈÖµ------------------*/
-uint retemp(void)
-{
-	uint tt;
-	uchar a,b;
-	uint t;
-	init_ds18b20();		//DS18B20³õÊ¼»¯
-	writebyte(0xCC); 	//Ìø¹ıROMÆ¥Åä
-	writebyte(0x44);	//Æô¶¯ÎÂ¶È×ª»»
-	init_ds18b20();		//DS18B20³õÊ¼»¯
-	writebyte(0xCC); 	//Ìø¹ıROMÆ¥Åä
-	writebyte(0xBE); 	//¶ÁÔİ´æÆ÷
-	a=readbyte();		//¶ÁÎÂ¶ÈµÍ×Ö½Ú
-	b=readbyte();		//¶ÁÎÂ¶È¸ß×Ö½Ú
-	t=b;
-	t<<=8;				//¸ß×Ö½Ú×óÒÆ8Î»
-	t=t|a;				//ºÏ²¢¸ßµÍ×Ö½Ú
-	tt=t*0.625;			//×ª»»ÎªÊµ¼ÊÎÂ¶ÈÖµ£¨¾«¶È0.0625¡ãC£¬·Å´ó10±¶£©
-	if(abs(pre_temp - tt) < 300) return(tt);
-	return(pre_temp);
-}
-
-/*--------------PID¿ØÖÆÆ÷------------------*/
+/**
+ * @brief  PID æ§åˆ¶å™¨ï¼ˆæ§åˆ¶é£æ‰‡è½¬é€Ÿï¼‰
+ * @param  current_temp  å½“å‰æ¸©åº¦ï¼ˆÃ—10ï¼‰
+ *
+ * è¾“å‡º fan_speed (0~100)ï¼Œé€šè¿‡å®šæ—¶å™¨ä¸­æ–­æ§åˆ¶æ­¥è¿›ç”µæœºè½¬é€Ÿ
+ * å½“ current_temp <= target_temp + 2 æ—¶ï¼Œåœæ­¢é£æ‰‡ï¼ˆé¿å…è¿‡è°ƒï¼‰
+ */
 void PID_Control(uint current_temp)
 {
-	if(current_temp <=  target_temp + 2)
-	{
-	fan_speed = 0;
-	return;
-	} 
-	//¼ÆËãÎó²î£ºÄ¿±êÎÂ¶È - µ±Ç°ÎÂ¶È
-	error = current_temp - target_temp;
-	
-	//¼ÆËã»ı·ÖÏî£¨ÀÛ¼ÓÎó²î£©
-	integral += error;
-	
-	//ÏŞÖÆ»ı·ÖÏî£¬·ÀÖ¹»ı·Ö±¥ºÍ
-	if(integral > 1000) integral = 1000;
-	if(integral < -1000) integral = -1000;
-	
-	//¼ÆËãÎ¢·ÖÏî£¨Îó²î±ä»¯ÂÊ£©
-	derivative = error - last_error;
-	
-	//¼ÆËãPIDÊä³ö
-	pid_output = 0.1 * KP * error + 0.03 * KI * integral + 0.1 * KD * derivative;
-	
-	//±£´æµ±Ç°Îó²î×÷ÎªÏÂ´ÎµÄÉÏÒ»´ÎÎó²î
-	last_error = error;
-	
-	//½«PIDÊä³ö×ª»»Îª·çÉÈ×ªËÙ£¨0-100£©
-	if(pid_output > 100) 
-		fan_speed = 100;	//×î´ó×ªËÙ
-	else if(pid_output < 0) 
-		fan_speed = 0;		//Í£Ö¹
-	else 
-		fan_speed = pid_output;
+    /* æ¸©åº¦è¶³å¤Ÿä½æ—¶åœæ­¢é£æ‰‡ */
+    if (current_temp <= target_temp + 2) {
+        fan_speed = 0;
+        return;
+    }
+
+    error = current_temp - target_temp;
+
+    /* ç§¯åˆ†ç´¯åŠ å¹¶é™å¹…ï¼ˆé˜²ç§¯åˆ†é¥±å’Œï¼‰ */
+    integral += error;
+    if (integral > 1000)  integral = 1000;
+    if (integral < -1000) integral = -1000;
+
+    /* å¾®åˆ†é¡¹ï¼ˆè¯¯å·®å˜åŒ–ç‡ï¼‰ */
+    derivative = error - last_error;
+    last_error = error;
+
+    /* PID è¾“å‡ºè®¡ç®— */
+    pid_output = 0.1 * KP * error + 0.03 * KI * integral + 0.1 * KD * derivative;
+
+    /* é™å¹…åˆ° 0~100 */
+    if (pid_output > 100)      fan_speed = 100;
+    else if (pid_output < 0)   fan_speed = 0;
+    else                       fan_speed = pid_output;
+}
+
+/* ==================== ä¸»å‡½æ•° ==================== */
+
+void main(void)
+{
+    int   temp, pre_temp = 0;
+    int   pre_target_temp = 0;
+    uchar disp_buf[4];
+
+    FAN_PORT = 0x03;            /* æ­¥è¿›ç”µæœºåˆå§‹ç›¸ä½ */
+    LCD_Init();
+    Timer0_Init();
+
+    /* æ˜¾ç¤ºåˆå§‹ç›®æ ‡æ¸©åº¦ */
+    disp_buf[3] = target_temp % 10 + '0';
+    disp_buf[1] = target_temp / 10 % 10 + '0';
+    disp_buf[0] = target_temp / 100 % 10 + '0';
+    disp_buf[2] = '.';
+    LCD_ShowString(0xC0, "Set:");
+    LCD_ShowString(0xC4, disp_buf);
+
+    while (1) {
+        /* ---- æŒ‰é”®å¤„ç† ---- */
+        if (!KEY_ADD1) {
+            target_temp++;
+            Delay(5);
+        } else if (!KEY_SUB1) {
+            target_temp--;
+            Delay(5);
+        } else if (!KEY_ADD) {
+            target_temp += 10;
+            Delay(5);
+        } else if (!KEY_SUB) {
+            target_temp -= 10;
+            Delay(5);
+        }
+
+        /* æ¸©åº¦é‡‡é›†ä¸PIDæ§åˆ¶ */
+        temp = DS18B20_ReadTemp();
+        PID_Control(temp);
+
+        /* å½“å‰æ¸©åº¦å˜åŒ–æ—¶åˆ·æ–° LCD ç¬¬ä¸€è¡Œ */
+        if (temp != pre_temp) {
+            pre_temp = temp;
+            disp_buf[3] = temp % 10 + '0';
+            disp_buf[1] = temp / 10 % 10 + '0';
+            disp_buf[0] = temp / 100 % 10 + '0';
+            disp_buf[2] = '.';
+            LCD_ShowString(0x80, "Cur:");
+            LCD_ShowString(0x84, disp_buf);
+        }
+
+        /* ç›®æ ‡æ¸©åº¦å˜åŒ–æ—¶åˆ·æ–° LCD ç¬¬äºŒè¡Œ */
+        if (target_temp != pre_target_temp) {
+            pre_target_temp = target_temp;
+            disp_buf[3] = target_temp % 10 + '0';
+            disp_buf[1] = target_temp / 10 % 10 + '0';
+            disp_buf[0] = target_temp / 100 % 10 + '0';
+            disp_buf[2] = '.';
+            LCD_ShowString(0xC0, "Set:");
+            LCD_ShowString(0xC4, disp_buf);
+        }
+
+        Delay(5);
+    }
 }

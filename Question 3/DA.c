@@ -1,15 +1,42 @@
-#include "DA.h"
-#include <intrins.h> 
+/**
+ * MIT License
+ *
+ * Copyright (c) 2026 xiaoshijourney
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 
+#include "DA.h"
+#include <intrins.h>
+
+/**
+ * @brief  å‘ DAC0832 å†™å…¥ 8 ä½æ•°æ®å¹¶é”å­˜è¾“å‡º
+ * @param  Data  æ•°å­—é‡ (0~255)ï¼Œè¾“å‡º 0~5V æ¨¡æ‹Ÿç”µå‹
+ *
+ * DAC0832 é‡‡ç”¨ç›´é€šæ–¹å¼ï¼ˆCS å’Œ WR ä½ç”µå¹³æœ‰æ•ˆè§¦å‘å†™å…¥ï¼‰
+ */
 void DAC0832_Write(unsigned char Data)
 {
-    // 1. ½« 8 Î»Êı×ÖÁ¿Ö±½ÓËÍµ½ P3 ¿Ú
-    DAC_DataPort = Data; 
-    
-    // 2. ²úÉúµÍµçÆ½Âö³å£¬½«Êı¾İËø´æ½ø DAC0832
-    DAC_CS = 0;          
-    DAC_WR = 0;          
-    _nop_();             // ¶ÌÔİÑÓÊ±£¬È·±£Êı¾İĞ´Èë³É¹¦
-    DAC_WR = 1;          
-    DAC_CS = 1;          
+    DAC_DataPort = Data;        /* è¾“å‡ºæ•°æ®åˆ°æ€»çº¿ */
+    DAC_CS = 0;                 /* ç‰‡é€‰æœ‰æ•ˆ */
+    DAC_WR = 0;                 /* å†™æœ‰æ•ˆ */
+    _nop_();                    /* ç¡®ä¿å†™å…¥æ—¶åº */
+    DAC_WR = 1;                 /* å†™æ— æ•ˆï¼ˆé”å­˜æ•°æ®ï¼‰ */
+    DAC_CS = 1;                 /* ç‰‡é€‰æ— æ•ˆ */
 }

@@ -1,37 +1,79 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2026 xiaoshijourney
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 #include <REGX52.H>
 #include "Delay.h"
+#include "key.h"
 
 /**
-  * @brief  ¾ØÕó¼üÅÌÉ¨Ãèº¯Êı
-  * @retval KeyNumber °´ÏÂ°´¼üµÄ±àºÅ (1~16)£¬ÎŞ°´¼ü°´ÏÂ·µ»Ø0
-  */
-unsigned char MatrixKey()
+ * @brief  4Ã—4 çŸ©é˜µé”®ç›˜æ‰«æå‡½æ•°
+ * @retval æŒ‰ä¸‹çš„æŒ‰é”®ç¼–å· (1~16)ï¼Œæ— æŒ‰é”®æŒ‰ä¸‹è¿”å› 0
+ *
+ * æ¥çº¿ï¼šè¡Œçº¿ P1.0~P1.3ï¼ˆè¾“å‡ºï¼‰ï¼Œåˆ—çº¿ P1.4~P1.7ï¼ˆè¾“å…¥ï¼‰
+ *
+ * æŒ‰é”®å¸ƒå±€ï¼š
+ *   +-----+-----+-----+-----+
+ *   |  1  |  2  |  3  |  4  |
+ *   +-----+-----+-----+-----+
+ *   |  5  |  6  |  7  |  8  |
+ *   +-----+-----+-----+-----+
+ *   |  9  | 10  | 11  | 12  |
+ *   +-----+-----+-----+-----+
+ *   | 13  | 14  | 15  | 16  |
+ *   +-----+-----+-----+-----+
+ */
+unsigned char MatrixKey(void)
 {
     unsigned char KeyNumber = 0;
 
-    P1 = 0xFF; P1_0 = 0; // É¨ÃèµÚÒ»ĞĞ
-    if(P1_4 == 0){Delay(20); while(P1_4 == 0); Delay(20); KeyNumber = 1;}
-    if(P1_5 == 0){Delay(20); while(P1_5 == 0); Delay(20); KeyNumber = 2;}
-    if(P1_6 == 0){Delay(20); while(P1_6 == 0); Delay(20); KeyNumber = 3;}
-    if(P1_7 == 0){Delay(20); while(P1_7 == 0); Delay(20); KeyNumber = 4;}
+    /* æ‰«æç¬¬1è¡Œï¼ˆP1.0=0ï¼‰ */
+    P1 = 0xFF;  P1_0 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 1;  }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 2;  }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 3;  }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 4;  }
 
-    P1 = 0xFF; P1_1 = 0; // É¨ÃèµÚ¶şĞĞ
-    if(P1_4 == 0){Delay(20); while(P1_4 == 0); Delay(20); KeyNumber = 5;}
-    if(P1_5 == 0){Delay(20); while(P1_5 == 0); Delay(20); KeyNumber = 6;}
-    if(P1_6 == 0){Delay(20); while(P1_6 == 0); Delay(20); KeyNumber = 7;}
-    if(P1_7 == 0){Delay(20); while(P1_7 == 0); Delay(20); KeyNumber = 8;}
+    /* æ‰«æç¬¬2è¡Œï¼ˆP1.1=0ï¼‰ */
+    P1 = 0xFF;  P1_1 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 5;  }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 6;  }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 7;  }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 8;  }
 
-    P1 = 0xFF; P1_2 = 0; // É¨ÃèµÚÈıĞĞ
-    if(P1_4 == 0){Delay(20); while(P1_4 == 0); Delay(20); KeyNumber = 9;}
-    if(P1_5 == 0){Delay(20); while(P1_5 == 0); Delay(20); KeyNumber = 10;}
-    if(P1_6 == 0){Delay(20); while(P1_6 == 0); Delay(20); KeyNumber = 11;}
-    if(P1_7 == 0){Delay(20); while(P1_7 == 0); Delay(20); KeyNumber = 12;}
+    /* æ‰«æç¬¬3è¡Œï¼ˆP1.2=0ï¼‰ */
+    P1 = 0xFF;  P1_2 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 9;  }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 10; }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 11; }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 12; }
 
-    P1 = 0xFF; P1_3 = 0; // É¨ÃèµÚËÄĞĞ
-    if(P1_4 == 0){Delay(20); while(P1_4 == 0); Delay(20); KeyNumber = 13;}
-    if(P1_5 == 0){Delay(20); while(P1_5 == 0); Delay(20); KeyNumber = 14;}
-    if(P1_6 == 0){Delay(20); while(P1_6 == 0); Delay(20); KeyNumber = 15;}
-    if(P1_7 == 0){Delay(20); while(P1_7 == 0); Delay(20); KeyNumber = 16;}
+    /* æ‰«æç¬¬4è¡Œï¼ˆP1.3=0ï¼‰ */
+    P1 = 0xFF;  P1_3 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 13; }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 14; }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 15; }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 16; }
 
     return KeyNumber;
 }

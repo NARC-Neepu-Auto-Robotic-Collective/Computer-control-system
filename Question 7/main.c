@@ -1,266 +1,322 @@
-/************************************************************************ 
-ÎÄ¼şÃû³Æ: main.c 
-×÷Õß:    
-°æ±¾:    V1.01
-ËµÃ÷:    Ä£Êı×ª»»ÊµÑé 
-ĞŞ¸Ä¼ÇÂ¼: ÓÉLEDÏÔÊ¾Ä£Êı×ª»»µÄ½á¹û£¬¸Ä±ä³ÉÓÉËÄÎ»ÊıÂë¹ÜÏÔÊ¾µçÑ¹Öµ  
--------------------------------------------------------------------------   
-* ¹¦ÄÜÃèÊö: ²É¼¯µçÎ»Æ÷µÄÄ£ÄâµçÑ¹Öµ£¬×ª»»³ÉÊı×ÖÁ¿
-* Í¨¹ıËÄÎ»¹²ÑôÊıÂë¹ÜÏÔÊ¾
--------------------------------------------------------------------------
-* ½ÓÏßËµÃ÷:
-*          ADC0809£º0809DB0~DB7--P00~P07 , 0809CS--P27£¬0809EOC--P34
-*                   0809WR--P36,0809RD--P37,0809A,B,CÍ¨µÀÑ¡Ôñ--GND  
-*                   0809CLK--ALE(×¢£ºÔÚºËĞÄ°åÉÏ),0809IN0--POT£¨µçÎ»Æ÷Êä³ö£© 
-*½ÓÏßËµÃ÷£ºP10~P17-DB0~DB7£¬P20-RS£¬P21-RW£¬P22-EN
-k1-23 k2-24                                       
-*************************************************************************/
-#include<reg52.h>
-#include<absacc.h>
+/**
+ * MIT License
+ *
+ * Copyright (c) 2026 xiaoshijourney
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/******************************************************************************
+ * é¢˜ç›®7ï¼šå®šé€Ÿå·¡èˆªå°è½¦
+ * åŠŸèƒ½ï¼šADC0809 é‡‡é›†æ¨¡æ‹Ÿç”µå‹ï¼ˆæ¨¡æ‹Ÿè½¦é€Ÿï¼‰â†’ LCD1602 æ˜¾ç¤º â†’ æŒ‰é”®è®¾å®šç›®æ ‡é€Ÿåº¦
+ *       â†’ PID æ§åˆ¶æ­¥è¿›ç”µæœºè½¬é€Ÿï¼ˆæ¨¡æ‹Ÿè½¦è½®é©±åŠ¨ï¼‰
+ * å®éªŒç®±èµ„æºï¼šæ‰‹åŠ¨è°ƒå‹æ¨¡å—ã€ADæ¨¡å—ã€æ­¥è¿›ç”µæœºã€LCD1602ã€æŒ‰é”®
+ * MCU: AT89S52, XTAL: 11.0592MHz
+ *
+ * ç¡¬ä»¶æ¥çº¿ï¼š
+ *   ADC0809: DB0~DB7â†’P0, CSâ†’P27, EOCâ†’P34, WRâ†’P36, RDâ†’P37, CLKâ†’ALE
+ *   LCD1602: DB0~DB7â†’P1, RSâ†’P20, RWâ†’P21, ENâ†’P22
+ *   æ­¥è¿›ç”µæœº: é©±åŠ¨å£â†’P3 (ä½4ä½)
+ *   æŒ‰é”®: ADDâ†’P23, SUBâ†’P24
+ ******************************************************************************/
+
+#include <reg52.h>
+#include <absacc.h>
 #include <intrins.h>
 #include <math.h>
-#define out P1
-#define fan_out  P3
-#define uchar unsigned char
-#define uint unsigned int
-//char code SST516[3] _at_ 0x003b;
-#define KP 5				//±ÈÀıÏµÊı
-#define KI 0				//»ı·ÖÏµÊı
-#define KD 0				//Î¢·ÖÏµÊı
-sbit rs=P2^0;
-sbit rw=P2^1;
-sbit e=P2^2;
-int error;					//µ±Ç°Îó²î
-int last_error;				//ÉÏÒ»´ÎÎó²î
-int integral;				//Îó²î»ı·Ö
-int derivative;				//Îó²îÎ¢·Ö
-int pid_output;				//PIDÊä³öÖµ
-uint speed_threshold = 0;
-unsigned char code segbit[]={0xc0,0xf9,0xa4,0xb0,	// 0, 1, 2, 3
-								 0x99,0x92,0x82,0xf8,0x80,0x90, 0xff};// 4, 5, 6, 7, 8, 9, off 
-unsigned char code combit[]={0xf1,0xf2,0xf4,0xf8};
-uchar code turn[]={0x02,0x06,0x04,0x0c,0x08,0x09,0x01,0x03};
-sbit ADD=P2^3;
-sbit SUB=P2^4;
- uchar dispbuf[4];
-#define ADC0809 XBYTE[0x7fff]    /* ¶¨ÒåADC0809 ¶Ë¿ÚµØÖ· */
 
-sbit EOC=P3^4;
-int tar_v = 0;
-int pre_tar_v = 0;
-void TimeInitial();
-void Delay(unsigned int i);
-void check_busy(void);
-void write_command(uchar com);
-void write_data(uchar dat);
-void LCD_initial(void);
-void string(uchar ad ,uchar *s);
-void lcd_test(void);
-void delay(uint);
-void PID_Control(uint current_temp);
-//²½½øµç»ú×ªËÙ¿ØÖÆ
-uint fan_speed = 0;			//·çÉÈ×ªËÙ£¨0-100£©
-uint speed_counter = 0;		//×ªËÙ¿ØÖÆ¼ÆÊıÆ÷
-uchar i;
+/* ==================== ç±»å‹å®šä¹‰ ==================== */
+#define uchar unsigned char
+#define uint  unsigned int
+
+/* ==================== ç¡¬ä»¶æ¥å£å®šä¹‰ ==================== */
+#define LCD_DATA    P1          /* LCD1602 æ•°æ®å£ (P1.0~P1.7) */
+#define MOTOR_PORT  P3          /* æ­¥è¿›ç”µæœºé©±åŠ¨å£ (P3.0~P3.3) */
+
+/* ADC0809 ç«¯å£åœ°å€ï¼ˆP27 ç‰‡é€‰ï¼ŒA/B/C é€šé“é€‰æ‹©æ¥åœ°â†’IN0ï¼‰ */
+#define ADC0809     XBYTE[0x7FFF]
+
+sbit LCD_RS  = P2^0;            /* LCD1602 å¯„å­˜å™¨é€‰æ‹© */
+sbit LCD_RW  = P2^1;            /* LCD1602 è¯»/å†™é€‰æ‹© */
+sbit LCD_EN  = P2^2;            /* LCD1602 ä½¿èƒ½ */
+
+sbit ADC_EOC = P3^4;            /* ADC0809 è½¬æ¢ç»“æŸæ ‡å¿— */
+
+sbit KEY_ADD = P2^3;            /* ç›®æ ‡é€Ÿåº¦+ */
+sbit KEY_SUB = P2^4;            /* ç›®æ ‡é€Ÿåº¦- */
+
+/* ==================== PID æ§åˆ¶å‚æ•° ==================== */
+#define KP  5                   /* æ¯”ä¾‹ç³»æ•° */
+#define KI  0                   /* ç§¯åˆ†ç³»æ•° */
+#define KD  0                   /* å¾®åˆ†ç³»æ•° */
+
+/* ==================== æ­¥è¿›ç”µæœº 8 æ‹é©±åŠ¨è¡¨ ==================== */
+uchar code STEP_TABLE[] = {
+    0x02, 0x06, 0x04, 0x0C, 0x08, 0x09, 0x01, 0x03
+};
+
+/* ==================== 7æ®µæ•°ç ç®¡æ®µç è¡¨ï¼ˆå…±é˜³æï¼‰ ==================== */
+uchar code SEG_CODE[] = {
+    0xC0, 0xF9, 0xA4, 0xB0,  /* 0, 1, 2, 3 */
+    0x99, 0x92, 0x82, 0xF8,  /* 4, 5, 6, 7 */
+    0x80, 0x90, 0xFF          /* 8, 9, off */
+};
+
+/* ==================== å…¨å±€å˜é‡ ==================== */
+int   target_speed = 0;         /* ç›®æ ‡é€Ÿåº¦ï¼ˆ0~500ï¼Œå¯¹åº”ADCç”µå‹Ã—100ï¼‰ */
+int   error;                    /* å½“å‰è¯¯å·® */
+int   last_error;               /* ä¸Šä¸€æ¬¡è¯¯å·® */
+int   integral;                 /* ç§¯åˆ†ç´¯åŠ  */
+int   derivative;               /* å¾®åˆ† */
+int   pid_output;               /* PID è¾“å‡ºå€¼ */
+uint  motor_speed = 0;          /* ç”µæœºè½¬é€Ÿ (0~100) */
+uint  speed_counter = 0;        /* è½¬é€Ÿæ§åˆ¶è®¡æ•°å™¨ */
+uint  speed_threshold = 0;      /* è½¬é€Ÿé˜ˆå€¼ */
+uchar step_idx = 0;             /* æ­¥è¿›ç”µæœºå½“å‰æ‹å· */
+
+/* ==================== å‡½æ•°å‰ç½®å£°æ˜ ==================== */
+void  Delay(uint ms);
+void  LCD_CheckBusy(void);
+void  LCD_WriteCommand(uchar cmd);
+void  LCD_WriteData(uchar dat);
+void  LCD_Init(void);
+void  LCD_ShowString(uchar addr, uchar *str);
+void  Timer0_Init(void);
+void  PID_Control(uint current_speed);
+uint  ADC0809_Read(void);
+
+/* ==================== å»¶æ—¶å‡½æ•° ==================== */
+
+/**
+ * @brief  æ¯«ç§’çº§å»¶æ—¶ï¼ˆçº¦1ms/æ¬¡ï¼Œ@11.0592MHzï¼‰
+ */
+void Delay(uint ms)
+{
+    uchar i;
+    while (ms--) {
+        i = 250;
+        while (--i);
+        i = 249;
+        while (--i);
+    }
+}
+
+/* ==================== LCD1602 é©±åŠ¨ ==================== */
+
+/**
+ * @brief  æ£€æµ‹ LCD1602 å¿™çŠ¶æ€
+ */
+void LCD_CheckBusy(void)
+{
+    uchar status;
+    do {
+        status = 0xFF;
+        LCD_EN = 0;
+        LCD_RS = 0;
+        LCD_RW = 1;
+        LCD_EN = 1;
+        status = LCD_DATA;
+    } while (status & 0x80);
+    LCD_EN = 0;
+}
+
+/**
+ * @brief  å‘ LCD1602 å†™å…¥æŒ‡ä»¤
+ */
+void LCD_WriteCommand(uchar cmd)
+{
+    LCD_CheckBusy();
+    LCD_EN = 0;
+    LCD_RS = 0;
+    LCD_RW = 0;
+    LCD_DATA = cmd;
+    LCD_EN = 1;
+    _nop_();
+    LCD_EN = 0;
+    Delay(1);
+}
+
+/**
+ * @brief  å‘ LCD1602 å†™å…¥æ•°æ®
+ */
+void LCD_WriteData(uchar dat)
+{
+    LCD_CheckBusy();
+    LCD_EN = 0;
+    LCD_RS = 1;
+    LCD_RW = 0;
+    LCD_DATA = dat;
+    LCD_EN = 1;
+    _nop_();
+    LCD_EN = 0;
+    Delay(1);
+}
+
+/**
+ * @brief  åˆå§‹åŒ– LCD1602
+ */
+void LCD_Init(void)
+{
+    LCD_WriteCommand(0x38);     /* 8ä½æ€»çº¿ï¼ŒåŒè¡Œæ˜¾ç¤ºï¼Œ5Ã—7ç‚¹é˜µ */
+    LCD_WriteCommand(0x0C);     /* æ˜¾ç¤ºå¼€ï¼Œå…‰æ ‡å…³ */
+    LCD_WriteCommand(0x06);     /* å†™å…¥åå…‰æ ‡å³ç§» */
+    LCD_WriteCommand(0x01);     /* æ¸…å± */
+    Delay(1);
+}
+
+/**
+ * @brief  åœ¨ LCD1602 æŒ‡å®šåœ°å€å¼€å§‹æ˜¾ç¤ºå­—ç¬¦ä¸²
+ */
+void LCD_ShowString(uchar addr, uchar *str)
+{
+    LCD_WriteCommand(addr);
+    while (*str) {
+        LCD_WriteData(*str++);
+        Delay(1);
+    }
+}
+
+/* ==================== ADC0809 é©±åŠ¨ ==================== */
+
+/**
+ * @brief  è¯»å– ADC0809 é€šé“0 çš„è½¬æ¢ç»“æœ
+ * @return 8ä½è½¬æ¢å€¼ï¼ˆ0~255ï¼‰ï¼Œå¯¹åº” 0~5V
+ */
+uint ADC0809_Read(void)
+{
+    uchar val;
+    ADC0809 = 0x0F;             /* å¯åŠ¨è½¬æ¢ï¼ˆä»»æ„å†™å…¥ï¼‰ */
+    while (!ADC_EOC);           /* ç­‰å¾…è½¬æ¢å®Œæˆ */
+    val = ADC0809;              /* è¯»å–ç»“æœ */
+    return val;
+}
+
+/* ==================== å®šæ—¶å™¨0ï¼ˆæ­¥è¿›ç”µæœº PWM è°ƒé€Ÿï¼‰ ==================== */
+
+/**
+ * @brief  å®šæ—¶å™¨0åˆå§‹åŒ–ï¼ˆæ¨¡å¼1ï¼Œ16ä½ï¼Œçº¦1msä¸­æ–­ï¼‰
+ */
 void Timer0_Init(void)
 {
-	TMOD |= 0x01;	//ÉèÖÃ¶¨Ê±Æ÷0ÎªÄ£Ê½1£¨16Î»¶¨Ê±Æ÷£©
-	TH0 = 0xF8;		//¶¨Ê±Æ÷³õÖµ£¬¶¨Ê±Ô¼1ms
-	TL0 = 0xCD;
-	ET0 = 1;		//Ê¹ÄÜ¶¨Ê±Æ÷0ÖĞ¶Ï
-	EA = 1;			//¿ª×ÜÖĞ¶Ï
-	TR0 = 1;		//Æô¶¯¶¨Ê±Æ÷0
+    TMOD |= 0x01;
+    TH0   = 0xF8;
+    TL0   = 0xCD;
+    ET0   = 1;
+    EA    = 1;
+    TR0   = 1;
 }
+
+/**
+ * @brief  å®šæ—¶å™¨0ä¸­æ–­æœåŠ¡å‡½æ•°ï¼ˆæ­¥è¿›ç”µæœºé€Ÿåº¦æ§åˆ¶ï¼‰
+ */
 void Timer0_ISR(void) interrupt 1
 {
-	TH0 = 0xF8;		//¶¨Ê±Æ÷³õÖµ£¬¶¨Ê±Ô¼1ms
-	TL0 = 0xCD;
+    TH0 = 0xF8;
+    TL0 = 0xCD;
 
-	if(fan_speed > 0)	//Èç¹û·çÉÈ×ªËÙ´óÓÚ0
-	{
-		speed_counter++;
-		
-		//¸ù¾İ×ªËÙ¼ÆËã²½½øµç»úÇĞ»»ÆµÂÊ
-		//fan_speedÔ½´ó£¬ÇĞ»»Ô½¿ì£»fan_speedÔ½Ğ¡£¬ÇĞ»»Ô½Âı
-		speed_threshold = 100 / fan_speed + 1;
-		
-		if(speed_counter >= speed_threshold)
-		{
-			speed_counter = 0;
-			i = i < 8 ? i+1 : 0;	//Ñ­»·ÇĞ»»²½½øµç»úÏàĞò
-			fan_out=(fan_out&0xf0)|turn[i];	//Êä³öµ½²½½øµç»ú¿ØÖÆ·çÉÈ×ªËÙ
-		}
-	}
-	else
-	{
-		//×ªËÙÎª0£¬Í£Ö¹²½½øµç»ú
-		fan_out=(fan_out&0xf0)|0x00;
-		speed_counter = 0;
-	}
-}
-void main()
-{
+    if (motor_speed > 0) {
+        speed_counter++;
+        speed_threshold = 100 / motor_speed + 1;
 
-
-	uchar  temp;
-	uint   voldata, pre_voldata;
-
-fan_out=(fan_out&0xf0)|0x03;
-	LCD_initial();			     //LCD1602 ³õÊ¼»¯
-	string(0x84,"WINDWAY");	 //ÏÔÊ¾×Ö·û´®
-		delay(100); 
-	write_command(0x01);     //ÇåÆÁ
-			dispbuf[3] = voldata%10 + '0';
-		dispbuf[2] = voldata/10%10 + '0';
-		dispbuf[1] = voldata/100%10 + '0';
-		dispbuf[0] = voldata/1000 + '0';
-		string(0x84,dispbuf);
-			dispbuf[3] = tar_v%10 + '0';
-		dispbuf[2] = tar_v/10%10 + '0';
-		dispbuf[1] = tar_v/100%10 + '0';
-		dispbuf[0] = tar_v/1000 + '0';
-		string(0xC4,dispbuf);
-		Timer0_Init();
-	while(1)
-	{
-		ADC0809=0x0f;		
-		do
-		{;}
-		while(~EOC);  //×ª»»ÊÇ·ñÍê³É		
-		//delayms(1);
-		temp = ADC0809; //¶Á³ö×ª»»½á¹û
-		voldata = temp*1.0/255*500;
-		if(pre_voldata != voldata)
-		{
-		pre_voldata = voldata;
-		dispbuf[3] = voldata%10 + '0';
-		dispbuf[2] = voldata/10%10 + '0';
-		dispbuf[1] = voldata/100%10 + '0';
-		dispbuf[0] = voldata/1000 + '0';
-		string(0x84,dispbuf);
-		}
-		PID_Control(voldata);
-		if(!ADD)			//Õı×ª
-		{
-tar_v+=100;
-		dispbuf[3] = tar_v%10 + '0';
-		dispbuf[2] = tar_v/10%10 + '0';
-		dispbuf[1] = tar_v/100%10 + '0';
-		dispbuf[0] = tar_v/1000 + '0';
-		string(0xC4,dispbuf);
-		}
-		
-		else if(!SUB)		//·´×ª
-		{
-tar_v-=100;
-		dispbuf[3] = tar_v%10 + '0';
-		dispbuf[2] = tar_v/10%10 + '0';
-		dispbuf[1] = tar_v/100%10 + '0';
-		dispbuf[0] = tar_v/1000 + '0';
-		string(0xC4,dispbuf);	
-		} 
-	}
+        if (speed_counter >= speed_threshold) {
+            speed_counter = 0;
+            step_idx = (step_idx < 7) ? (step_idx + 1) : 0;
+            MOTOR_PORT = (MOTOR_PORT & 0xF0) | STEP_TABLE[step_idx];
+        }
+    } else {
+        /* åœæ­¢ç”µæœº */
+        MOTOR_PORT = (MOTOR_PORT & 0xF0) | 0x00;
+        speed_counter = 0;
+    }
 }
 
- 
-//1msÑÓÊ±³ÌĞò
-void delay(uint j)
+/* ==================== PID æ§åˆ¶ç®—æ³• ==================== */
+
+/**
+ * @brief  PID æ§åˆ¶å™¨ï¼ˆæ§åˆ¶ç”µæœºè½¬é€Ÿï¼‰
+ * @param  current_speed  å½“å‰é€Ÿåº¦å€¼ï¼ˆ0~500ï¼ŒADCç”µå‹Ã—100ï¼‰
+ *
+ * è¾“å‡º motor_speed (0~100)ï¼Œé€šè¿‡å®šæ—¶å™¨ä¸­æ–­æ§åˆ¶æ­¥è¿›ç”µæœºè½¬é€Ÿ
+ */
+void PID_Control(uint current_speed)
 {
-uchar i=250;
-for(;j>0;j--)
-	{
-	while(--i);
-	i=249;
-	while(--i);
-	i=250;
-	}
+    error = abs(current_speed - target_speed);
+
+    integral += error;
+    if (integral > 1000)  integral = 1000;
+    if (integral < -1000) integral = -1000;
+
+    derivative = error - last_error;
+    last_error = error;
+
+    pid_output = 0.1 * KP * error + 0.03 * KI * integral + 0.1 * KD * derivative;
+
+    if (pid_output > 100)      motor_speed = 100;
+    else if (pid_output < 0)   motor_speed = 0;
+    else                       motor_speed = pid_output;
 }
-//²éÃ¦³ÌĞò
-void check_busy(void)
+
+/* ==================== ä¸»å‡½æ•° ==================== */
+
+void main(void)
 {
-uchar dt;
-do
-{
-dt=0xff;
-e=0;
-rs=0;	
-rw=1;
-e=1;
-dt=out;
-}while(dt&0x80);
-e=0;
-}
-//Ğ´¿ØÖÆÖ¸Áî
-void write_command(uchar com)
-{
-check_busy();
-e=0;
-rs=0;
-rw=0;
-out=com;
-e=1;
-_nop_();
-e=0;
-delay(1);
-}
-//Ğ´Êı¾İÖ¸Áî
-void write_data(uchar dat)
-{
-check_busy();
-e=0;
-rs=1;
-rw=0;
-out=dat;
-e=1;
-_nop_();
-e=0;
-delay(1);	
-}
-//Òº¾§ÆÁ³õÊ¼»¯
-void LCD_initial(void)
-{
-	write_command(0x38);//8Î»×ÜÏß,Ë«ĞĞÏÔÊ¾£¬5X7µÄµãÕó×Ö·û
-	write_command(0x0C);//¿ªÕûÌåÏÔÊ¾,¹â±ê¹Ø£¬ÎŞºÚ¿é
-	write_command(0x06);//¹â±êÓÒÒÆ
-	write_command(0x01);//ÇåÆÁ
-	delay(1);
-}
-//Êä³ö×Ö·û´®
-void string(uchar ad,uchar *s)
-{
-write_command(ad);
-while(*s>0)
-	{
-	write_data(*s++);
-	delay(100);
-	}
-}
-void PID_Control(uint current_v)
-{
-	//¼ÆËãÎó²î£ºÄ¿±êÎÂ¶È - µ±Ç°ÎÂ¶È
-	error = abs(current_v - tar_v);
-	
-	//¼ÆËã»ı·ÖÏî£¨ÀÛ¼ÓÎó²î£©
-	integral += error;
-	
-	//ÏŞÖÆ»ı·ÖÏî£¬·ÀÖ¹»ı·Ö±¥ºÍ
-	if(integral > 1000) integral = 1000;
-	if(integral < -1000) integral = -1000;
-	
-	//¼ÆËãÎ¢·ÖÏî£¨Îó²î±ä»¯ÂÊ£©
-	derivative = error - last_error;
-	
-	//¼ÆËãPIDÊä³ö
-	pid_output = 0.1 * KP * error + 0.03 * KI * integral + 0.1 * KD * derivative;
-	
-	//±£´æµ±Ç°Îó²î×÷ÎªÏÂ´ÎµÄÉÏÒ»´ÎÎó²î
-	last_error = error;
-	
-	//½«PIDÊä³ö×ª»»Îª·çÉÈ×ªËÙ£¨0-100£©
-	if(pid_output > 100) 
-		fan_speed = 100;	//×î´ó×ªËÙ
-	else if(pid_output < 0) 
-		fan_speed = 0;		//Í£Ö¹
-	else 
-		fan_speed = pid_output;
+    uint  speed_val, prev_speed = 0;
+    uchar disp_buf[4];
+
+    MOTOR_PORT = (MOTOR_PORT & 0xF0) | 0x03;  /* æ­¥è¿›ç”µæœºåˆå§‹ç›¸ä½ */
+    LCD_Init();
+    Timer0_Init();
+
+    while (1) {
+        /* ---- è¯»å–å½“å‰é€Ÿåº¦ ---- */
+        speed_val = ADC0809_Read();
+        /* è½¬æ¢ä¸º 0~500 èŒƒå›´ï¼ˆ0~5V æ˜ å°„åˆ° 0~500ï¼Œæ”¾å¤§100å€ä¾¿äºæ˜¾ç¤ºï¼‰ */
+        speed_val = speed_val * 1.0 / 255 * 500;
+
+        /* ---- é€Ÿåº¦å˜åŒ–æ—¶åˆ·æ–° LCD ç¬¬ä¸€è¡Œ ---- */
+        if (speed_val != prev_speed) {
+            prev_speed = speed_val;
+            disp_buf[3] = speed_val % 10 + '0';
+            disp_buf[2] = speed_val / 10 % 10 + '0';
+            disp_buf[1] = speed_val / 100 % 10 + '0';
+            disp_buf[0] = speed_val / 1000 + '0';
+            LCD_ShowString(0x84, disp_buf);
+        }
+
+        /* ---- PID æ§åˆ¶ ---- */
+        PID_Control(speed_val);
+
+        /* ---- æŒ‰é”®å¤„ç†ï¼ˆè°ƒæ•´ç›®æ ‡é€Ÿåº¦ï¼‰ ---- */
+        if (!KEY_ADD) {
+            target_speed += 100;
+            disp_buf[3] = target_speed % 10 + '0';
+            disp_buf[2] = target_speed / 10 % 10 + '0';
+            disp_buf[1] = target_speed / 100 % 10 + '0';
+            disp_buf[0] = target_speed / 1000 + '0';
+            LCD_ShowString(0xC4, disp_buf);
+        } else if (!KEY_SUB) {
+            target_speed -= 100;
+            disp_buf[3] = target_speed % 10 + '0';
+            disp_buf[2] = target_speed / 10 % 10 + '0';
+            disp_buf[1] = target_speed / 100 % 10 + '0';
+            disp_buf[0] = target_speed / 1000 + '0';
+            LCD_ShowString(0xC4, disp_buf);
+        }
+    }
 }

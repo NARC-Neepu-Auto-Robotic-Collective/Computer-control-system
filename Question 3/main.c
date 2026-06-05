@@ -1,141 +1,192 @@
+/**
+ * MIT License
+ *
+ * Copyright (c) 2026 xiaoshijourney
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/******************************************************************************
+ * é¢˜ç›®3ï¼šçƒ¤ç®±æ¹¿åº¦æ§åˆ¶ç³»ç»Ÿ
+ * åŠŸèƒ½ï¼šHS1101 é¢‘ç‡æ³•é‡‡é›†æ¹¿åº¦ â†’ LCD1602 æ˜¾ç¤º â†’ çŸ©é˜µé”®ç›˜è®¾å®šç›®æ ‡æ¹¿åº¦
+ *       â†’ æ¯”ä¾‹æ§åˆ¶ DAC0832â†’LED äº®åº¦è°ƒèŠ‚ï¼ˆæ¨¡æ‹Ÿçƒ˜çƒ¤ç¯ï¼‰
+ * å®éªŒç®±èµ„æºï¼šæ¹¿åº¦ä¼ æ„Ÿæ¨¡å—ï¼ˆHS1101 + 555æŒ¯è¡å™¨ï¼‰ã€DAæ¨¡å—ã€LEDæ¨¡å—ã€LCD1602ã€çŸ©é˜µé”®ç›˜
+ * MCU: AT89S52, XTAL: 11.0592MHz
+ *
+ * æ¹¿åº¦æµ‹é‡åŸç†ï¼šHS1101 ç”µå®¹å€¼éšæ¹¿åº¦å˜åŒ– â†’ 555æŒ¯è¡å™¨é¢‘ç‡å˜åŒ–
+ * å®šæ—¶å™¨0 å¯¹å¤–éƒ¨è„‰å†²è®¡æ•°ï¼ˆ1sçª—å£ï¼‰ï¼Œå®šæ—¶å™¨1 æä¾› 50ms æ—¶åŸº
+ * é¢‘ç‡èŒƒå›´çº¦ 5623~6852 Hzï¼Œæ˜ å°„åˆ°æ¹¿åº¦ 0~99%RH
+ ******************************************************************************/
+
 #include <REGX52.H>
 #include "LCD1602.h"
 #include "key.h"
 #include "DA.h"
+#include "Delay.h"
 
-// ================= ½Ó¿Ú¶¨Òå =================
-sbit HS1101_Pin = P3^4; 
+/* ==================== ç¡¬ä»¶æ¥å£å®šä¹‰ ==================== */
+sbit HS1101_Pin = P3^4;         /* 555æŒ¯è¡å™¨è¾“å‡ºå¼•è„šï¼ˆæ¥ T0 è®¡æ•°å™¨è¾“å…¥ï¼‰ */
 
-// ================= È«¾Ö±äÁ¿ =================
-unsigned char KeyNum = 0;       
-unsigned char CurrentHumi = 0;   
-unsigned char TargetHumi = 50;   
+/* ==================== æ§åˆ¶å‚æ•° ==================== */
+#define KP  10                  /* æ¯”ä¾‹ç³»æ•° */
 
-int Humi_Error = 0;              
-int DA_Output = 0;               
-unsigned char Kp = 10;           
+/* ==================== å…¨å±€å˜é‡ ==================== */
+bit    DataReady = 0;           /* 1ç§’æµ‹é‡å®Œæˆæ ‡å¿— */
+uint   Frequency = 0;           /* 1ç§’å†…è„‰å†²è®¡æ•°ï¼ˆé¢‘ç‡ï¼ŒHzï¼‰ */
+uchar  CurrentHumidity = 0;     /* å½“å‰æ¹¿åº¦ (%RH, 0~99) */
+uchar  TargetHumidity  = 50;    /* ç›®æ ‡æ¹¿åº¦ (%RH, 0~99) */
+int    Error;                   /* æ¹¿åº¦è¯¯å·® */
+int    DA_Output;               /* DAC è¾“å‡ºå€¼ */
 
-extern void Delay(unsigned int ms);
-int op = 0;
-unsigned int fre = 0; 
-void Sys_Init(void);
-bit  Disflag=0;
-// ================= Ö÷º¯Êı =================
-void main(void)
+/* ==================== åˆå§‹åŒ–ç³»ç»Ÿæ—¶é’Ÿ ==================== */
+
+/**
+ * @brief  ç³»ç»Ÿæ—¶é’Ÿåˆå§‹åŒ–
+ *         å®šæ—¶å™¨0ï¼šè®¡æ•°å™¨æ¨¡å¼1ï¼ˆ16ä½ï¼‰ï¼Œå¯¹å¤–éƒ¨è„‰å†²è®¡æ•°ï¼ˆT0å¼•è„šï¼‰
+ *         å®šæ—¶å™¨1ï¼šå®šæ—¶å™¨æ¨¡å¼1ï¼ˆ16ä½ï¼‰ï¼Œ50ms æ—¶åŸº
+ */
+void Sys_Init(void)
 {
-    unsigned char temp0 = 0, temp1 = 0;
-    LCD_Init();
-    Sys_Init();
-	TR0=1;								// Æô¶¯¼ÆÊıÆ÷0
-	TR1=1;								// Æô¶¯¶¨Ê±Æ÷1
-	IE=0x88;							// ´ò¿ª¶¨Ê±ÖĞ¶Ï1ºÍ×ÜÖĞ¶Ï
-    // ¿ª»ú³õÊ¼»¯¾²Ì¬¿ò¼Ü
-    LCD_ShowString(1, 1, "Now Humi: --%   "); 
-    LCD_ShowString(2, 1, "Set Humi: "); 
-    LCD_ShowNum(2, 11, TargetHumi, 2);
-    LCD_ShowString(2, 13, "%   ");
-//    while(1)
-//    {
-//	for(op = 100;op < 200;op+= 10)
-//	{
-//	 DAC0832_Write((unsigned char)255-op);
-//Delay(100);
-//	}
+    TMOD = 0x15;                /* T0: è®¡æ•°å™¨æ¨¡å¼1(16ä½)ï¼ŒT1: å®šæ—¶å™¨æ¨¡å¼1(16ä½) */
+    TH0  = 0;
+    TL0  = 0;
+    TH1  = 0x4C;                /* 50ms @ 12MHz (å®é™…11.0592MHzï¼Œç•¥æœ‰åå·®) */
+    TL1  = 0x00;
+    TR0  = 1;                   /* å¯åŠ¨è®¡æ•°å™¨0 */
+    TR1  = 1;                   /* å¯åŠ¨å®šæ—¶å™¨1 */
+    IE   = 0x88;                /* å¼€æ€»ä¸­æ–­ + å®šæ—¶å™¨1ä¸­æ–­ */
+}
 
-//	 }
-		
-    while(1)
-    {
-        // 1. ¼üÅÌÉ¨Ãè
-        KeyNum = MatrixKey();       
-        if(KeyNum != 0)
-        {
-            if(KeyNum <= 10) 
-            {
-                if(KeyNum == 10) KeyNum = 0; 
-                TargetHumi = (TargetHumi % 10) * 10 + KeyNum; 
-                if(TargetHumi > 99) TargetHumi = 99; 
-            }
-            if(KeyNum == 11) TargetHumi = 0;
-            
-            // ¡¾¾Ö²¿ÇåÆÁ¸üĞÂ·¨¡¿ĞŞ¸ÄµÚ¶şĞĞ
-            LCD_ShowNum(2, 11, TargetHumi, 2); 
-            LCD_ShowString(2, 13, "%   "); // ¸²¸ÇºóÃæ¿ÉÄÜ²ĞÁôµÄÂÒÂë
-        }
+/* ==================== å®šæ—¶å™¨1ä¸­æ–­æœåŠ¡å‡½æ•° ==================== */
 
-        // 2. ÒµÎñÂß¼­ÂÖÑ¯
-        Delay(1); 
-        if(Disflag)	
-        {
-            Disflag=0;	 
-			
-            fre = fre - 100; // Èí¼şĞ£×¼²¹³¥Öµ
-            // --- ÖØµãĞŞ¸´£ºµÚÒ»ĞĞ¸üĞÂÂß¼­ ---
-            if((5623 <= fre) && (fre <= 6852)) 
-            { 
-                if((6734 < fre) && (fre <= 6852)) { temp0 = 0; temp1 = (6852 - fre) * 10 / 118; } 
-                else if((6618 < fre) && (fre <= 6734)) { temp0 = 1; temp1 = (6734 - fre) * 10 / 116; } 
-                else if((6503 < fre) && (fre <= 6618)) { temp0 = 2; temp1 = (6618 - fre) * 10 / 115; } 
-                else if((6388 < fre) && (fre <= 6503)) { temp0 = 3; temp1 = (6503 - fre) * 10 / 115; } 
-                else if((6271 < fre) && (fre <= 6388)) { temp0 = 4; temp1 = (6388 - fre) * 10 / 117; } 
-                else if((6152 < fre) && (fre <= 6271)) { temp0 = 5; temp1 = (6271 - fre) * 10 / 119; } 
-                else if((6029 < fre) && (fre <= 6152)) { temp0 = 6; temp1 = (6152 - fre) * 10 / 123; } 
-                else if((5901 < fre) && (fre <= 6029)) { temp0 = 7; temp1 = (6029 - fre) * 10 / 128; } 
-                else if((5766 < fre) && (fre <= 5901)) { temp0 = 8; temp1 = (5901 - fre) * 10 / 135; } 
-                else if((5623 <= fre) && (fre <= 5766)) { temp0 = 9; temp1 = (5766 - fre) * 10 / 143; } 
-                
-                CurrentHumi = temp0 * 10 + temp1;
-                
-                // ¡¾¾Ö²¿ÇåÆÁ¸üĞÂ·¨¡¿ÎŞÂÛÊı×Ö±ä¼¸Î»£¬ĞĞÎ²È«²¿ÓÃ¿Õ¸ñÍÆÆ½
-                LCD_ShowString(1, 1, "Now Humi: ");
-                LCD_ShowNum(1, 11, CurrentHumi, 2); 
-                LCD_ShowString(1, 13, "%   "); 
-            } 
-//            else 
-//            { 
-//                CurrentHumi = 0; 
-//                // Ö±½ÓÕûĞĞ×Ö·û´®Ó²¸²¸Ç£¬Á¬²ĞÓ°µÄ¸ù¶¼°Îµô
-//                LCD_ShowString(1, 1, "Now Humi: EE%   "); 
-//            } 
+/**
+ * @brief  å®šæ—¶å™¨1 ä¸­æ–­ï¼ˆ50ms Ã— 20 = 1s æµ‹é‡çª—å£ï¼‰
+ *
+ * æ¯1ç§’è¯»å–ä¸€æ¬¡ T0 è®¡æ•°å€¼ä½œä¸ºé¢‘ç‡ï¼Œç„¶åæ¸…é›¶è®¡æ•°å™¨
+ */
+void Timer1_ISR(void) interrupt 3
+{
+    static unsigned char tick = 0;
 
-            // --- PID ¸º·´À¡Êä³ö ---
-            if(CurrentHumi > TargetHumi && CurrentHumi != 0)
-            {
-                Humi_Error = CurrentHumi - TargetHumi;
-                DA_Output = 0.1 * Humi_Error * Kp;
-                if(DA_Output > 100) DA_Output = 100; 
-            }
-            else
-            {
-                DA_Output = 0; 
-            }
-            DAC0832_Write((unsigned char)155-DA_Output);
-        }
+    TH1 = 0x4C;
+    TL1 = 0x00;
+
+    if (++tick >= 20) {         /* 50ms Ã— 20 = 1000ms */
+        tick = 0;
+        Frequency = (TH0 << 8) | TL0;  /* è¯»å–1ç§’å†…è„‰å†²è®¡æ•°å€¼ */
+        TH0 = 0;                       /* æ¸…é›¶è®¡æ•°å™¨ */
+        TL0 = 0;
+        DataReady = 1;                 /* é€šçŸ¥ä¸»å¾ªç¯æœ‰æ–°æ•°æ® */
     }
 }
 
-void timer1() interrupt 3 
+/* ==================== æ¹¿åº¦é¢‘ç‡æ¢ç®— ==================== */
+
+/**
+ * @brief  å°† HS1101 é¢‘ç‡å€¼è½¬æ¢ä¸ºæ¹¿åº¦å€¼
+ * @param  freq  555æŒ¯è¡å™¨è¾“å‡ºé¢‘ç‡ï¼ˆHzï¼‰
+ * @retval æ¹¿åº¦å€¼ (%RH, 0~99)
+ *
+ * é¢‘ç‡-æ¹¿åº¦å¯¹ç…§è¡¨ï¼ˆç»å®éªŒæ ‡å®šï¼Œå‡å»åŸºå‡†åç§»100Hzï¼‰ï¼š
+ *   90%~99%: 5623~5766 Hz
+ *   80%~89%: 5766~5901 Hz
+ *   ...
+ *    0%~ 9%: 6734~6852 Hz
+ */
+uchar HumidityFromFreq(uint freq)
 {
-	static char j = 0;
-	TH1=0x4C;						   // ÖØÉè¶¨Ê±Æ÷Öµ£¬50ms @ 11.0592MHz XTAL
-	TL1=0x00;
-	if(++j == 20)					   // 50ms * 20 = 1S
-	{			  
-		j = 0;
-		fre = (TH0 << 8) | TL0;		   // 1SÄÚµÄ¼ÆÊıÖµ¼´Îª1ÃëÄÚµÄÊäÈëÆµÂÊ
-		TH0 = 0;					   // ÇåÁã¼ÆÊı
-		TL0 = 0;
-        Disflag=1;	 
-	}
+    uchar tens = 0, ones = 0;
+
+    freq -= 100;                /* åŸºå‡†åç§»æ ¡å‡† */
+
+    if (freq < 5623 || freq > 6852) {
+        return 0;               /* è¶…å‡ºæœ‰æ•ˆèŒƒå›´ */
+    }
+
+    if      (freq > 6734 && freq <= 6852) { tens = 0; ones = (6852 - freq) * 10 / 118; }
+    else if (freq > 6618 && freq <= 6734) { tens = 1; ones = (6734 - freq) * 10 / 116; }
+    else if (freq > 6503 && freq <= 6618) { tens = 2; ones = (6618 - freq) * 10 / 115; }
+    else if (freq > 6388 && freq <= 6503) { tens = 3; ones = (6503 - freq) * 10 / 115; }
+    else if (freq > 6271 && freq <= 6388) { tens = 4; ones = (6388 - freq) * 10 / 117; }
+    else if (freq > 6152 && freq <= 6271) { tens = 5; ones = (6271 - freq) * 10 / 119; }
+    else if (freq > 6029 && freq <= 6152) { tens = 6; ones = (6152 - freq) * 10 / 123; }
+    else if (freq > 5901 && freq <= 6029) { tens = 7; ones = (6029 - freq) * 10 / 128; }
+    else if (freq > 5766 && freq <= 5901) { tens = 8; ones = (5901 - freq) * 10 / 135; }
+    else if (freq >= 5623 && freq <= 5766) { tens = 9; ones = (5766 - freq) * 10 / 143; }
+
+    return tens * 10 + ones;
 }
 
+/* ==================== ä¸»å‡½æ•° ==================== */
 
-void Sys_Init(void)
-{   
-	TMOD=0x15;              // ¶¨Ê±Æ÷0¹¤×÷ÓÚ¼ÆÊı·½Ê½£¬¹¤×÷·½Ê½1£¬16Î»¼ÆÊı
-	                        // ¶¨Ê±Æ÷1¹¤×÷ÓÚ¶¨Ê±·½Ê½£¬¹¤×÷·½Ê½1£¬16Î»¶¨Ê±
-	TH0=0;					// ÇåÁã¼ÆÊıÆ÷
-	TL0=0;
-	TH1=0x4C;				// 12M¾§Õñ¹¤×÷ÏÂ£¬¶¨Ê±50ms
-	TL1=0x00;
+void main(void)
+{
+    uchar KeyNum;
+
+    LCD_Init();
+    Sys_Init();
+
+    /* æ˜¾ç¤ºé™æ€æ ‡ç­¾ */
+    LCD_ShowString(1, 1, "Now Humi: --%   ");
+    LCD_ShowString(2, 1, "Set Humi: ");
+    LCD_ShowNum(2, 11, TargetHumidity, 2);
+    LCD_ShowString(2, 13, "%   ");
+
+    while (1) {
+        /* ---- æŒ‰é”®æ‰«æ ---- */
+        KeyNum = MatrixKey();
+        if (KeyNum != 0) {
+            if (KeyNum <= 10) {
+                if (KeyNum == 10) KeyNum = 0;   /* æŒ‰é”®10 æ˜ å°„ä¸ºæ•°å­—0 */
+                TargetHumidity = (TargetHumidity % 10) * 10 + KeyNum;
+                if (TargetHumidity > 99) TargetHumidity = 99;
+            }
+            if (KeyNum == 11) TargetHumidity = 0;
+
+            /* åˆ·æ–° LCD ç¬¬äºŒè¡Œï¼ˆç›®æ ‡æ¹¿åº¦ï¼‰ */
+            LCD_ShowNum(2, 11, TargetHumidity, 2);
+            LCD_ShowString(2, 13, "%   ");
+        }
+
+        /* ---- æ¹¿åº¦é‡‡é›†ä¸æ˜¾ç¤ºï¼ˆ1ç§’æ›´æ–°ä¸€æ¬¡ï¼‰ ---- */
+        Delay(1);
+        if (DataReady) {
+            DataReady = 0;
+
+            CurrentHumidity = HumidityFromFreq(Frequency);
+
+            /* åˆ·æ–° LCD ç¬¬ä¸€è¡Œï¼ˆå½“å‰æ¹¿åº¦ï¼‰ */
+            LCD_ShowString(1, 1, "Now Humi: ");
+            LCD_ShowNum(1, 11, CurrentHumidity, 2);
+            LCD_ShowString(1, 13, "%   ");
+
+            /* ---- æ¯”ä¾‹æ§åˆ¶ç®—æ³• ---- */
+            if (CurrentHumidity > TargetHumidity && CurrentHumidity != 0) {
+                Error     = CurrentHumidity - TargetHumidity;
+                DA_Output = (int)(0.1 * Error * KP);
+                if (DA_Output > 100) DA_Output = 100;
+            } else {
+                DA_Output = 0;
+            }
+
+            /* DAC0832 è¾“å‡ºæ§åˆ¶ LED äº®åº¦ï¼ˆä½äºé˜ˆå€¼åˆ™å…³é—­LEDï¼‰ */
+            DAC0832_Write((unsigned char)(155 - DA_Output));
+        }
+    }
 }
