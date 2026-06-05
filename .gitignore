@@ -1,0 +1,33 @@
+# Keil C51 build artifacts
+*.OBJ
+*.LST
+*.M51
+*.hex
+*.omf
+*.omf.plg
+*.lnp
+*.__i
+*.plg
+
+# Backup files
+*.bak
+*_uvopt.bak
+*_uvproj.bak
+
+# Editor temp files
+*.PWI
+*.iex
+
+# Database dumps
+*.DBK
+*.dmp
+
+# User-specific uvopt (keeps window layout, not source)
+*.uvopt
+
+# macOS temp files
+.DS_Store
+._*
+
+# IDE temp
+*.uvgui.*
