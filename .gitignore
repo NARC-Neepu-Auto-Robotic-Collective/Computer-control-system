@@ -31,3 +31,6 @@
 
 # IDE temp
 *.uvgui.*
+
+# Keil build log
+*.build_log.htm
