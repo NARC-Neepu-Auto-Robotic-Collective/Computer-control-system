@@ -35,13 +35,26 @@
  ******************************************************************************/
 
 #include <REGX52.H>
-#include "LCD1602.h"
-#include "key.h"
-#include "DA.h"
-#include "Delay.h"
+#include <intrins.h>
+
+/* ==================== 类型定义 ==================== */
+#define uchar unsigned char
+#define uint  unsigned int
 
 /* ==================== 硬件接口定义 ==================== */
-sbit HS1101_Pin = P3^4;         /* 555振荡器输出引脚（接 T0 计数器输入） */
+/* LCD1602 (8位并行, P0口) */
+#define LCD_DataPort  P0
+sbit LCD_RS = P3^0;
+sbit LCD_RW = P3^1;
+sbit LCD_EN = P3^2;
+
+/* DAC0832 (P2口) */
+#define DAC_DataPort  P2
+sbit DAC_CS = P3^6;
+sbit DAC_WR = P3^5;
+
+/* HS1101 555振荡器频率输入 (T0计数器引脚) */
+sbit HS1101_Pin = P3^4;
 
 /* ==================== 控制参数 ==================== */
 #define KP  10                  /* 比例系数 */
@@ -54,7 +67,228 @@ uchar  TargetHumidity  = 50;    /* 目标湿度 (%RH, 0~99) */
 int    Error;                   /* 湿度误差 */
 int    DA_Output;               /* DAC 输出值 */
 
-/* ==================== 初始化系统时钟 ==================== */
+/* ==================== 函数声明 ==================== */
+/* 延时 */
+void Delay(uint xms);
+
+/* LCD1602 内部驱动 */
+static void LCD_Delay(void);
+static void LCD_WriteCommand(uchar Command);
+static void LCD_WriteData(uchar Data);
+static void LCD_SetCursor(uchar Line, uchar Column);
+static int  LCD_Pow(int X, int Y);
+
+/* LCD1602 公开函数 */
+void LCD_Init(void);
+void LCD_ShowString(uchar Line, uchar Column, char *String);
+void LCD_ShowNum(uchar Line, uchar Column, uint Number, uchar Length);
+
+/* 矩阵键盘 */
+uchar MatrixKey(void);
+
+/* DAC0832 */
+void DAC0832_Write(uchar Data);
+
+/* 系统与算法 */
+void  Sys_Init(void);
+uchar HumidityFromFreq(uint freq);
+
+/* ==================== 毫秒级延时（@11.0592MHz） ==================== */
+
+/**
+ * @brief  毫秒级延时
+ * @param  xms  延时毫秒数
+ */
+void Delay(uint xms)
+{
+    uchar i, j;
+    while (xms--) {
+        i = 2;
+        j = 152;
+        do {
+            while (--j);
+        } while (--i);
+    }
+}
+
+/* ==================== LCD1602 内部驱动函数 ==================== */
+
+/**
+ * @brief  LCD1602 内部短延时（@11.0592MHz）
+ */
+static void LCD_Delay(void)
+{
+    uchar i = 2, j = 152;
+    do {
+        while (--j);
+    } while (--i);
+}
+
+/**
+ * @brief  写指令到 LCD1602
+ */
+static void LCD_WriteCommand(uchar Command)
+{
+    LCD_RS = 0;
+    LCD_RW = 0;
+    LCD_DataPort = Command;
+    LCD_EN = 1;
+    LCD_Delay();
+    LCD_EN = 0;
+    LCD_Delay();
+}
+
+/**
+ * @brief  写数据到 LCD1602
+ */
+static void LCD_WriteData(uchar Data)
+{
+    LCD_RS = 1;
+    LCD_RW = 0;
+    LCD_DataPort = Data;
+    LCD_EN = 1;
+    LCD_Delay();
+    LCD_EN = 0;
+    LCD_Delay();
+}
+
+/**
+ * @brief  设置光标位置
+ * @param  Line   行号 (1~2)
+ * @param  Column 列号 (1~16)
+ */
+static void LCD_SetCursor(uchar Line, uchar Column)
+{
+    if (Line == 1) {
+        LCD_WriteCommand(0x80 | (Column - 1));
+    } else if (Line == 2) {
+        LCD_WriteCommand(0x80 | (Column - 1 + 0x40));
+    }
+}
+
+/**
+ * @brief  计算 X 的 Y 次方
+ */
+static int LCD_Pow(int X, int Y)
+{
+    int Result = 1;
+    uchar i;
+    for (i = 0; i < Y; i++) {
+        Result *= X;
+    }
+    return Result;
+}
+
+/* ==================== LCD1602 公开函数 ==================== */
+
+/**
+ * @brief  初始化 LCD1602（8位总线、双行显示、5×7点阵）
+ */
+void LCD_Init(void)
+{
+    LCD_WriteCommand(0x38);     /* 8位数据接口，双行显示，5×7点阵 */
+    LCD_WriteCommand(0x0C);     /* 显示开，光标关，不闪烁 */
+    LCD_WriteCommand(0x06);     /* 写入后光标右移，屏幕不滚动 */
+    LCD_WriteCommand(0x01);     /* 光标复位，清屏 */
+}
+
+/**
+ * @brief  在指定位置显示字符串
+ */
+void LCD_ShowString(uchar Line, uchar Column, char *String)
+{
+    uchar i;
+    LCD_SetCursor(Line, Column);
+    for (i = 0; String[i] != '\0'; i++) {
+        LCD_WriteData(String[i]);
+    }
+}
+
+/**
+ * @brief  在指定位置显示无符号数字
+ */
+void LCD_ShowNum(uchar Line, uchar Column, uint Number, uchar Length)
+{
+    uchar i;
+    LCD_SetCursor(Line, Column);
+    for (i = Length; i > 0; i--) {
+        LCD_WriteData(Number / LCD_Pow(10, i - 1) % 10 + '0');
+    }
+}
+
+/* ==================== 4×4 矩阵键盘 ==================== */
+
+/**
+ * @brief  4×4 矩阵键盘扫描函数
+ * @retval 按下的按键编号 (1~16)，无按键按下返回 0
+ *
+ * 接线：行线 P1.0~P1.3（输出），列线 P1.4~P1.7（输入）
+ *
+ * 按键布局：
+ *   +-----+-----+-----+-----+
+ *   |  1  |  2  |  3  |  4  |
+ *   +-----+-----+-----+-----+
+ *   |  5  |  6  |  7  |  8  |
+ *   +-----+-----+-----+-----+
+ *   |  9  | 10  | 11  | 12  |
+ *   +-----+-----+-----+-----+
+ *   | 13  | 14  | 15  | 16  |
+ *   +-----+-----+-----+-----+
+ */
+uchar MatrixKey(void)
+{
+    uchar KeyNumber = 0;
+
+    /* 扫描第1行（P1.0=0） */
+    P1 = 0xFF;  P1_0 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 1;  }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 2;  }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 3;  }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 4;  }
+
+    /* 扫描第2行（P1.1=0） */
+    P1 = 0xFF;  P1_1 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 5;  }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 6;  }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 7;  }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 8;  }
+
+    /* 扫描第3行（P1.2=0） */
+    P1 = 0xFF;  P1_2 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 9;  }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 10; }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 11; }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 12; }
+
+    /* 扫描第4行（P1.3=0） */
+    P1 = 0xFF;  P1_3 = 0;
+    if (P1_4 == 0) { Delay(20); while (P1_4 == 0); Delay(20); KeyNumber = 13; }
+    if (P1_5 == 0) { Delay(20); while (P1_5 == 0); Delay(20); KeyNumber = 14; }
+    if (P1_6 == 0) { Delay(20); while (P1_6 == 0); Delay(20); KeyNumber = 15; }
+    if (P1_7 == 0) { Delay(20); while (P1_7 == 0); Delay(20); KeyNumber = 16; }
+
+    return KeyNumber;
+}
+
+/* ==================== DAC0832 驱动 ==================== */
+
+/**
+ * @brief  向 DAC0832 写入 8 位数据并锁存输出
+ * @param  Data  数字量 (0~255)，输出 0~5V 模拟电压
+ *
+ * DAC0832 采用直通方式（CS 和 WR 低电平有效触发写入）
+ */
+void DAC0832_Write(uchar Data)
+{
+    DAC_DataPort = Data;        /* 输出数据到总线 */
+    DAC_CS = 0;                 /* 片选有效 */
+    DAC_WR = 0;                 /* 写有效 */
+    _nop_();                    /* 确保写入时序 */
+    DAC_WR = 1;                 /* 写无效（锁存数据） */
+    DAC_CS = 1;                 /* 片选无效 */
+}
+
+/* ==================== 系统初始化 ==================== */
 
 /**
  * @brief  系统时钟初始化
@@ -82,7 +316,7 @@ void Sys_Init(void)
  */
 void Timer1_ISR(void) interrupt 3
 {
-    static unsigned char tick = 0;
+    static uchar tick = 0;
 
     TH1 = 0x4C;
     TL1 = 0x00;
@@ -186,7 +420,7 @@ void main(void)
             }
 
             /* DAC0832 输出控制 LED 亮度（低于阈值则关闭LED） */
-            DAC0832_Write((unsigned char)(155 - DA_Output));
+            DAC0832_Write((uchar)(155 - DA_Output));
         }
     }
 }
