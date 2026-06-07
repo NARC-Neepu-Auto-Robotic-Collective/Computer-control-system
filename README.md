@@ -41,10 +41,10 @@
 │   └── 计算机控制系统设计性实验指导书.pdf     # 实验指导书
 ├── Question 1/                   # 题目 1：孵化室温度控制系统
 │   ├── main.c                    # 主程序（DS18B20 + LCD1602 + 比例控制 + DAC0832）
-│   ├── 温室大棚调温系统.DSN         # Proteus 仿真原理图
-│   ├── 温室大棚调温系统.uvproj      # Keil 工程文件
-│   ├── 温室大棚调温系统.pdsprj      # Proteus 仿真工程
-│   └── STARTUP.A51               # 启动文件
+│   ├── IO控制方式.DSN             # Proteus 仿真原理图
+│   ├── IO控制方式.uvproj          # Keil 工程文件
+│   ├── STARTUP.A51               # 启动文件
+│   └── 仿真.pdsprj                # Proteus 仿真工程
 ├── Question 2/                   # 题目 2：机柜温度控制系统
 │   ├── main.c                    # 主程序（DS18B20 + LCD1602 + PID + 步进电机）
 │   ├── IO控制方式.DSN             # Proteus 仿真原理图
